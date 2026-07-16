@@ -18,31 +18,31 @@ Copy the `.nro` to your SD card and place the game files next to it, in the same
 sdmc:/switch/zookeeper/
 ├── zookeeper_nx.nro
 ├── libil2cpp.so                 <- from your APK: lib/arm64-v8a/
-├── libunity.so                  <- from your APK: lib/arm64-v8a/ (STOCK/unmodified — see below)
+├── libunity.so                  <- from your APK: lib/arm64-v8a/ 
 ├── libmain.so                   <- from your APK: lib/arm64-v8a/
 └── assets/                      <- the whole assets/ folder from the APK
     └── bin/Data/ ... (data.unity3d, global-metadata.dat, etc.)
 ```
-
-* The three `.so` engine librarieso are the 64-bit libraries from
-  `lib/arm64-v8a/` in your APK. (32-bit `armeabi-v7a` will not work; this wrapper is arm64.)
-* `assets/` — unzip the APK and copy its `assets/` directory verbatim.
-
 The wrapper runs under Atmosphère via **title override** (launch the installed game while holding a
 chosen button). The game folder is `sdmc:/switch/zookeeper/`.
 
+Optionally, drop a `cursor.png` (64x64, transparency supported) in the same folder to replace the on-screen cursor with your own.
+
 ## Controls
+ 
+| Input | Action |
+| --- | --- |
+| `+` | Toggle the on-screen cursor |
+| `-` | Toggle gyro pointing (tilt/turn the controller to aim) |
+| Left stick | Move the cursor |
+| `L` / `R` | Recenter the cursor to the middle of the screen (helps gyro aiming) |
+| `A` / `ZR` / `ZL` | Tap / confirm (ZL and ZR let you play one-handed) |
+| `B` | Back button
+| D-pad up / down | Adjust sensitivity of whatever is driving the cursor |
 
-Zookeeper DX is a portrait touch game, so it plays best rotated (TATE mode).
-
-* **Handheld** — driven by the touchscreen, exactly like Android. By default the screen is rotated
-  90°; hold the console upright in your hands (right Joy-Con up) and play with the touchscreen.
-* **Docked** (no touchscreen) — the **left stick** drives an on-screen cursor and **A** taps; a
-  small dot shows the cursor position. Press-and-hold **A** while moving the stick to drag.
-* **B** sends the Android **Back** key (cancel / menu-back).
-* **HOME** suspends/exits as usual.
-
-Touch and the docked cursor are automatically remapped to match the current rotation.
+A USB mouse works in both handheld and docked: move to control the cursor, left-click to tap, and use the scroll wheel to change 
+sensitivity.
+Your stick, mouse and gyro sensitivities are remembered in `pointer.cfg` automatically after in-game adjustment.
 
 ## Configuration
 
@@ -53,9 +53,6 @@ On first launch the wrapper writes a documented `sdmc:/switch/zookeeper/config.t
   `1` (default) rotates clockwise (right Joy-Con up); `2` rotates the other way (left Joy-Con up);
   `0` disables rotation (stretched 16:9). Set `portrait 0` if you play docked on a TV and don't
   want a sideways picture.
-* `language` — in-game language, applied on next launch: `2` English (default), `1` Japanese,
-  `0` follow the Switch system language.
-* `screen_width` / `screen_height` — render size; `-1` = auto (native).
 
 Save data (settings, progress, high scores) is stored in
 `sdmc:/switch/zookeeper/prefs.kv` and persists across launches.
@@ -66,7 +63,7 @@ Install devkitPro with the Switch toolchain and these packages:
 
 ```
 pacman -S switch-dev
-pacman -S switch-mesa switch-libdrm_nouveau switch-sdl2 switch-zlib
+pacman -S switch-mesa switch-libdrm_nouveau switch-sdl2 switch-freetype switch-libpng switch-zlib switch-bzip2
 ```
 
 `switch-mesa` provides GLES3/EGL; `switch-sdl2` backs the window/HID/audio device; `switch-zlib`
