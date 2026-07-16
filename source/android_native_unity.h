@@ -17,7 +17,6 @@ uint32_t android_native_width(void);
 uint32_t android_native_height(void);
 void  android_native_feed_hid(uint8_t (*inject)(void*,void*,void*,int),
                               void *env, void *thiz);
-void  android_native_draw_cursor(void);   /* docked cursor overlay; called by the swap wrapper */
 
 /* NDK functions libunity imports (register these in imports.c) */
 void     ANativeWindow_acquire(ANativeWindow *);

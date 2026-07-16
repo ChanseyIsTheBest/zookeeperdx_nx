@@ -355,6 +355,7 @@ static juint mov_int(const FakeID *id, va_list va) {
 // the APK versionCode, matching the shipped main.10007.android.mvgl.
 #define MAIN_OBB_BASE "main.10007"
 
+const char *nx_resolved_language(void);
 static const char *lang_code(void) {
   // CR3 has English + Japanese text only; everything else falls back to English.
   if (config.language == LANG_JA) return "ja";
@@ -372,6 +373,8 @@ static const char *lang_code(void) {
   }
   return ja ? "ja" : "en";
 }
+
+const char *nx_resolved_language(void) { return lang_code(); }
 
 // Walk a JNI arg list per the signature and return the first non-empty String
 // argument's text (used to seed the keyboard from ShowEditBox's initial text).
@@ -467,8 +470,21 @@ static void *act_object(const FakeID *id, va_list va) {
   if (name_has(id->name, "AssetPack3"))       return jni_make_string("CRDBmov");
   if (name_has(id->name, "getProperty"))
     return getproperty_value(jni_string_utf(va_arg(va, void *)));
-  if (name_has(id->name, "Language") || name_has(id->name, "language"))
-    return jni_make_string(lang_code());
+  if (!strcmp(id->name, "toLanguageTag")) {
+    /* Android returns the FULL BCP-47 tag WITH region here, e.g. "ja-JP"/"en-US".
+     * Some engines/game code parse this (not the bare getLanguage()) for locale. */
+    const char *tag = !strcmp(lang_code(), "ja") ? "ja-JP" : "en-US";
+    debugPrintf("[lang] toLanguageTag -> %s (config.language=%d)\n", tag, config.language);
+    return jni_make_string(tag);
+  }
+  if (name_has(id->name, "Language") || name_has(id->name, "language")) {
+    /* getLanguage(): Unity maps its SystemLanguage enum on the BARE ISO-639-1
+     * subtag ("ja"/"en") ONLY -- a full "ja_JP" here makes Unity silently fall
+     * back to English (the one non-obvious seam). Keep it bare. */
+    const char *lc = lang_code();
+    debugPrintf("[lang] getLanguage -> %s (config.language=%d)\n", lc, config.language);
+    return jni_make_string(lc);
+  }
   // Environment.getExternalStorageState() must return the SAME token as the
   // Environment.MEDIA_MOUNTED field ("mounted", see field_object) or the engine
   // decides external storage is unavailable and the save path never initialises.
@@ -563,9 +579,21 @@ static void act_void(const FakeID *id, va_list va) {
   if (is_editbox_show(id->name)) { editbox_show(first_string_arg(id->sig, va), 32); return; }
   if (is_editbox_close(id->name)) { editbox_close(); return; }
   (void)va;
+  /* Any quit signal from the game -> exit NOW via svcExitProcess (atomic kernel
+   * termination of every thread BEFORE any teardown). On Android finish()/
+   * System.exit()/killProcess() end the process; if we defer (jni_quit_requested)
+   * or no-op, the game runs its post-quit teardown inside our fake JNI env and
+   * faults -- the "closing the game crashes the system" report is an Instruction
+   * Abort in a game thread, which happens before the main loop could exit. Doing
+   * it here, the moment the game asks, beats that teardown. Log which call fired
+   * so the close sequence is visible. Saves already happened before finish(). */
   if (!strcmp(id->name, "finish") || name_has(id->name, "appEnd") ||
-      name_has(id->name, "exitApp"))
+      name_has(id->name, "exitApp") || !strcmp(id->name, "exit") ||
+      !strcmp(id->name, "killProcess") || !strcmp(id->name, "halt")) {
     jni_quit_requested = 1;
+    debugPrintf("[boot] game quit signal '%s' -> svcExitProcess (clean exit)\n", id->name);
+    svcExitProcess();
+  }
   // openStore / sendBroadcast / IME open / Mobage / web view: no-op
 }
 

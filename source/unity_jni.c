@@ -251,8 +251,13 @@ void *unity_dispatch_object(void *recv, const void *id_, va_list va){ const stru
     if (has(m,"edit")) return uh_new(UJ_EDITOR);
     if (has(m,"getString")){
       const char *key = jni_string_utf(va_arg(va,void*));
+      void *defobj = va_arg(va,void*);                 /* getString(key, DEFAULT) */
+      const char *def = defobj ? jni_string_utf(defobj) : NULL;
       KV*kv=kv_get(key);
-      return jni_make_string(kv?kv->val: (ret_is(id->sig,"Ljava/lang/String;")? "" : "") );
+      const char *val = kv ? kv->val : (def ? def : "");
+      debugPrintf("[prefs] getString '%s' -> '%s' (%s)\n",
+                  key ? key : "(null)", val, kv ? "stored" : "default");
+      return jni_make_string(val);
     }
     if (has(m,"getAll")){                 /* Unity PlayerPrefs LOAD entry point */
       debugPrintf("[prefs] getAll() -> Map of %d entries\n", g_kv_n);

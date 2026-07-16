@@ -562,7 +562,7 @@ static void gl_DrawElements_log(GLenum m, GLsizei c, GLenum t, const void *i) { 
  * exact libnx buffer-queue call the present is blocked in. */
 volatile u64 g_swap_enter_tick = 0;
 
-extern void android_native_draw_cursor(void);   /* docked cursor overlay (android_native_unity.c) */
+extern void nxp_draw(void);   /* pointer/cursor overlay (nx_pointer.c) */
 
 static EGLBoolean egl_SwapBuffers_log(EGLDisplay d, EGLSurface s) {
   g_swap_count++;
@@ -575,7 +575,7 @@ static EGLBoolean egl_SwapBuffers_log(EGLDisplay d, EGLSurface s) {
                 g_swap_count, (int)w, (int)h, s, d, g_draw_calls);
   }
   g_draw_calls = 0;
-  android_native_draw_cursor();          /* overlay the docked cursor, then present */
+  nxp_draw();                            /* overlay the cursor, then present */
   g_swap_enter_tick = armGetSystemTick();
   EGLBoolean r = eglSwapBuffers(d, s);
   g_swap_enter_tick = 0;

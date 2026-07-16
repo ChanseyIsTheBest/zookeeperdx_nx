@@ -13,6 +13,9 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET    := zookeeper_nx
 APP_TITLE := ZOOKEEPER DX
 APP_AUTHOR := ChanseyIsTheBest
+APP_VERSION := 1.0.1
+APP_ICON  := $(TOPDIR)/icon.jpg
+export APP_TITLE APP_AUTHOR APP_VERSION APP_ICON
 BUILD     := build
 SOURCES   := source
 INCLUDES  := source
@@ -29,7 +32,7 @@ LDFLAGS  = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $
 
 # mesa GLES3 + EGL + nouveau, SDL2 for window/HID/audio, zlib. No ffmpeg/freetype
 # (no video; soft-keyboard text rendering stubbed initially).
-LIBS := -lSDL2 -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lz -lnx -lm
+LIBS := -lSDL2 -lGLESv2 -lEGL -lglapi -ldrm_nouveau -lpng -lz -lnx -lm
 
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
@@ -61,6 +64,10 @@ $(BUILD):
 clean:
 	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 else
+# elf2nro (from switch_rules' %.nro recipe) uses $(NROFLAGS); without these the
+# NRO gets no icon and no .nacp -> no author/title/version. The .nacp is already
+# built (APP_TITLE/APP_AUTHOR/APP_VERSION) as a dependency; pass it + the icon.
+NROFLAGS := --icon=$(APP_ICON) --nacp=$(OUTPUT).nacp
 DEPENDS := $(OFILES:.o=.d)
 all : $(OUTPUT).nro
 $(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp

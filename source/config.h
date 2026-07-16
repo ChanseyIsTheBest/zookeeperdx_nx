@@ -67,15 +67,13 @@ extern int screen_width;
 extern int screen_height;
 
 // Language. CR3 (Google Play) only has English + Japanese text; any other value
-// falls back to English. 0 = follow the Switch system language (Japanese -> ja,
+// falls back to English. DEFAULT 0 = follow the Switch system language (Japanese -> ja,
 // otherwise en).
 #define LANG_AUTO 0
 #define LANG_JA   1
 #define LANG_EN   2
 
 typedef struct {
-  int screen_width;
-  int screen_height;
   int language;
   int portrait;    /* TATE rotation: 1 = ROT90 CW (default, right Joy-Con up),
                       2 = ROT270 CCW (left Joy-Con up), 0 = none (stretch) */

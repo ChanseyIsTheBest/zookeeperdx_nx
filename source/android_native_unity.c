@@ -39,6 +39,16 @@ typedef struct ALooper       ALooper;
  * dock-aware screen state (also read by unity_jni.c's Display getters)
  * ========================================================================== */
 static u32 g_w = 720, g_h = 1280;   /* fbstub45 PORTRAIT (stable) */
+/* The resolution Unity BELIEVES it has = the last size it requested via
+ * setBuffersGeometry (its SetResolution 640x1137). We reject the real NWindow
+ * resize (kept at g_w x g_h) but Unity maps ALL input into this believed space,
+ * so injected touch/cursor coords must be SCALED from framebuffer space
+ * (g_w x g_h) into it -- otherwise the right/bottom ~11% lands beyond Unity's
+ * screen and is dead (the "can't tap the far right" bug, on touch AND cursor).
+ * 0 => not set yet, use g_w/g_h. */
+static int g_input_w = 0, g_input_h = 0;
+static inline float nxp_scale_x(void){ return (float)(g_input_w > 0 ? g_input_w : (int)g_w) / (float)g_w; }
+static inline float nxp_scale_y(void){ return (float)(g_input_h > 0 ? g_input_h : (int)g_h) / (float)g_h; }
 
 void android_native_update_mode(void){
   if (appletGetOperationMode() == AppletOperationMode_Console) { g_w = 1080; g_h = 1920; }
@@ -115,6 +125,7 @@ int32_t  ANativeWindow_setBuffersGeometry(ANativeWindow *w, int32_t width, int32
    * at frame 2. So: accept only the native geometry; report success for the
    * rest so Unity's own fallback engages. */
   if (width > 0 && height > 0) {
+    g_input_w = width; g_input_h = height;   /* Unity's believed screen == its input space */
     if ((u32)width != g_w || (u32)height != g_h) {
       debugPrintf("[gfx] setBuffersGeometry %dx%d REJECTED (fixed-size window stays %ux%u; engine will blit-scale)\n",
                   width, height, g_w, g_h);
@@ -231,14 +242,16 @@ void android_get_orientation(float *x, float *y, float *z){
  * the recovered nativeInjectEvent(env, thiz, event, deviceId).
  * ========================================================================== */
 #include "unity_input.h"
+#include "nx_pointer.h"
+#include "config.h"
+
+extern FILE *fopen_fake(const char *path, const char *mode);
+extern int   fclose_fake(FILE *f);
 
 static PadState g_pad;
 static HidTouchScreenState g_touch;
 static int   g_prev_touch = 0;        /* pointers down last frame */
-static float g_cursor_x = 640, g_cursor_y = 360;
-static int   g_cursor_shown = 0;      /* draw the docked cursor only while it is in use */
 static float g_last_tx = 360, g_last_ty = 640;  /* last handheld touch (game space) for UP */
-static int   g_prev_a = 0;
 
 void android_native_input_init(void){
   padConfigureInput(1, HidNpadStyleSet_NpadStandard);
@@ -252,13 +265,30 @@ void android_native_input_init(void){
 /* inject signature == recovered nativeInjectEvent: (env,thiz,InputEvent,int)->Z */
 typedef uint8_t (*inject_fn)(void*,void*,void*,int);
 
+static void nxp_ensure_init(void){
+  static int done = 0;
+  if (done) return;
+  done = 1;
+  NxpConfig c = {0};
+  c.screen_w = (int)g_w; c.screen_h = (int)g_h;   /* render (portrait) space   */
+  c.panel_w  = 1280;     c.panel_h  = 720;         /* Switch touch panel        */
+  c.data_dir = "sdmc:/switch/zookeeper";           /* cursor.png / pointer.cfg  */
+  c.rotation = config.portrait;                    /* 1 CW / 2 CCW / 0 none     */
+  c.handle_touch = 0;                              /* host keeps its own touch  */
+  c.cursor_id = 0; c.max_touch_slots = UI_MAX_POINTERS;
+  c.fopen_fn = fopen_fake; c.fclose_fn = fclose_fake;
+  debugPrintf("[nxp] init: cursor screen=%dx%d (g_w=%u g_h=%u) panel=%dx%d rot=%d\n",
+              c.screen_w, c.screen_h, g_w, g_h, c.panel_w, c.panel_h, c.rotation);
+  nxp_init(&c);
+}
+
 void android_native_feed_hid(inject_fn inject, void *env, void *thiz){
+  nxp_ensure_init();
   padUpdate(&g_pad);
 
   /* ---- handheld touchscreen ---- */
   int n = hidGetTouchScreenStates(&g_touch, 1);
   if (n > 0 && g_touch.count > 0){
-    g_cursor_shown = 0;                                 /* touching -> hide the stick cursor */
     int   ids[UI_MAX_POINTERS]; float xs[UI_MAX_POINTERS]; float ys[UI_MAX_POINTERS];
     int c = g_touch.count > UI_MAX_POINTERS ? UI_MAX_POINTERS : g_touch.count;
     /* The Switch panel reports touches in its native 1280x720 landscape space;
@@ -290,27 +320,25 @@ void android_native_feed_hid(inject_fn inject, void *env, void *thiz){
     return;
   }
 
-  /* ---- docked: virtual cursor from left stick, A = tap ---- */
-  HidAnalogStickState ls = padGetStickPos(&g_pad, 0);
-  float sx = (ls.x / 32767.0f) * 14.0f, sy = (ls.y / 32767.0f) * 14.0f;  /* ~14 px/frame */
-  /* Stick deltas go through the same portrait rotation as touch, so the cursor
-   * moves the way the player sees it on the rotated screen. */
-  if (config.portrait == 2)      { g_cursor_x += sy; g_cursor_y += sx; } /* ROT_270 CCW */
-  else if (config.portrait == 1) { g_cursor_x -= sy; g_cursor_y -= sx; } /* ROT_90  CW  */
-  else                           { g_cursor_x += sx; g_cursor_y -= sy; } /* no rotation */
-  if (g_cursor_x < 0) g_cursor_x = 0;
-  if (g_cursor_x > g_w) g_cursor_x = g_w;
-  if (g_cursor_y < 0) g_cursor_y = 0;
-  if (g_cursor_y > g_h) g_cursor_y = g_h;
-  if (sx*sx + sy*sy > 0.25f) g_cursor_shown = 1;       /* stick moved -> reveal cursor */
-
-  int a = (padGetButtons(&g_pad) & HidNpadButton_A) ? 1 : 0;
-  if (a) g_cursor_shown = 1;
-  int ids[1]={0}; float xs[1]={g_cursor_x}, ys[1]={g_cursor_y};
-  if (a && !g_prev_a)      inject(env, thiz, unity_motionevent(AMOTION_ACTION_DOWN, 1, ids, xs, ys), 0);
-  else if (a && g_prev_a)  inject(env, thiz, unity_motionevent(AMOTION_ACTION_MOVE, 1, ids, xs, ys), 0);
-  else if (!a && g_prev_a) inject(env, thiz, unity_motionevent(AMOTION_ACTION_UP,   1, ids, xs, ys), 0);
-  g_prev_a = a;
+  /* ---- cursor: stick / USB mouse / gyro, via nx_pointer (rotation-aware) ----
+   * nx_pointer reads its own pad + mouse + sixaxis, handles +/- toggles, L/R
+   * recenter, D-pad sensitivity, cursor.png and pointer.cfg. It emits pointer
+   * events already in render space; forward each as a single-pointer motion
+   * event. (Touch above is handled by the host and returns early, so this runs
+   * only when not touching.) */
+  nxp_update();
+  NxpEvent pev[8];
+  int pn = nxp_poll(pev, 8);
+  for (int i = 0; i < pn; i++){
+    int   ids[1] = { 0 };                               /* same touch slot as finger 0 -> taps register */
+    float xs[1]  = { pev[i].x }, ys[1] = { pev[i].y };
+    int action = pev[i].phase == NXP_DOWN ? AMOTION_ACTION_DOWN
+               : pev[i].phase == NXP_UP   ? AMOTION_ACTION_UP
+                                          : AMOTION_ACTION_MOVE;
+    if (pev[i].phase == NXP_DOWN)
+      debugPrintf("[nxp] cursor tap at (%.0f,%.0f)\n", pev[i].x, pev[i].y);
+    inject(env, thiz, unity_motionevent(action, 1, ids, xs, ys), 0);
+  }
 
   /* B -> Android Back key (menu-back), edge-triggered */
   static int prev_b = 0;
@@ -320,74 +348,5 @@ void android_native_feed_hid(inject_fn inject, void *env, void *thiz){
   prev_b = b;
 }
 
-/* ==========================================================================
- * Docked cursor overlay (ported verbatim from the VLN reference port).
- * Draws an antialiased dot at (g_cursor_x, g_cursor_y) over the finished
- * frame; called by the swap wrapper (imports.c) right before eglSwapBuffers.
- * Saves and restores every piece of GL state it touches so Unity's renderer
- * never notices. Visible only while the stick cursor is in use (g_cursor_shown:
- * stick movement or A reveals it, touching the screen hides it).
- * ========================================================================== */
-static GLuint cur_link(const char *vs, const char *fs){
-  GLuint v=glCreateShader(GL_VERTEX_SHADER);   glShaderSource(v,1,&vs,0); glCompileShader(v);
-  GLuint f=glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(f,1,&fs,0); glCompileShader(f);
-  GLuint p=glCreateProgram(); glAttachShader(p,v); glAttachShader(p,f); glLinkProgram(p);
-  GLint ok=0; glGetProgramiv(p,GL_LINK_STATUS,&ok);
-  glDeleteShader(v); glDeleteShader(f);
-  if(!ok){ glDeleteProgram(p); return 0; }
-  return p;
-}
-
-void android_native_draw_cursor(void){
-  if (!g_cursor_shown) return;
-  static struct { GLuint prog; GLint pos, loc, feather; int tried; } c = {0,0,0,0,0};
-  if (!c.tried){
-    c.tried = 1;
-    c.prog = cur_link(
-      "attribute vec2 aPos; attribute vec2 aLocal; varying vec2 vL;"
-      "void main(){ vL=aLocal; gl_Position=vec4(aPos,0.0,1.0); }",
-      "precision mediump float; varying vec2 vL; uniform float uF;"
-      "void main(){ float d=length(vL);"
-      " float a=1.0-smoothstep(1.0-uF,1.0,d);"
-      " float core=1.0-smoothstep(0.72-uF,0.72+uF,d);"
-      " gl_FragColor=vec4(mix(vec3(0.05),vec3(0.98),core), a*0.85); }");
-    if (c.prog){ c.pos=glGetAttribLocation(c.prog,"aPos"); c.loc=glGetAttribLocation(c.prog,"aLocal"); c.feather=glGetUniformLocation(c.prog,"uF"); }
-  }
-  if (!c.prog) return;
-
-  float cx = (g_cursor_x / (float)g_w) * 2.0f - 1.0f;
-  float cy = 1.0f - (g_cursor_y / (float)g_h) * 2.0f;
-  float r  = 18.0f * ((float)(g_w > g_h ? g_w : g_h) / 1280.0f);
-  float rx = r/(float)g_w*2.0f, ry = r/(float)g_h*2.0f;
-  const GLfloat pos[8]  = { cx-rx,cy-ry, cx+rx,cy-ry, cx-rx,cy+ry, cx+rx,cy+ry };
-  static const GLfloat local[8] = { -1,-1, 1,-1, -1,1, 1,1 };
-
-  GLint pprog,pbuf,pvao,pvp[4],bsr,bdr,bsa,bda,ber,bea;
-  GLboolean e_bl=glIsEnabled(GL_BLEND), e_dp=glIsEnabled(GL_DEPTH_TEST),
-            e_sc=glIsEnabled(GL_SCISSOR_TEST), e_cu=glIsEnabled(GL_CULL_FACE);
-  glGetIntegerv(GL_CURRENT_PROGRAM,&pprog); glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&pbuf);
-  glGetIntegerv(GL_VERTEX_ARRAY_BINDING,&pvao); glGetIntegerv(GL_VIEWPORT,pvp);
-  glGetIntegerv(GL_BLEND_SRC_RGB,&bsr); glGetIntegerv(GL_BLEND_DST_RGB,&bdr);
-  glGetIntegerv(GL_BLEND_SRC_ALPHA,&bsa); glGetIntegerv(GL_BLEND_DST_ALPHA,&bda);
-  glGetIntegerv(GL_BLEND_EQUATION_RGB,&ber); glGetIntegerv(GL_BLEND_EQUATION_ALPHA,&bea);
-
-  glBindVertexArray(0);                                /* scratch VAO: client arrays allowed */
-  glViewport(0,0,(GLsizei)g_w,(GLsizei)g_h);
-  glDisable(GL_DEPTH_TEST); glDisable(GL_SCISSOR_TEST); glDisable(GL_CULL_FACE);
-  glEnable(GL_BLEND); glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-  glBindBuffer(GL_ARRAY_BUFFER,0); glUseProgram(c.prog); glUniform1f(c.feather, 2.5f/r);
-  glEnableVertexAttribArray(c.pos); glEnableVertexAttribArray(c.loc);
-  glVertexAttribPointer(c.pos,2,GL_FLOAT,GL_FALSE,0,pos);
-  glVertexAttribPointer(c.loc,2,GL_FLOAT,GL_FALSE,0,local);
-  glDrawArrays(GL_TRIANGLE_STRIP,0,4);
-  glDisableVertexAttribArray(c.pos); glDisableVertexAttribArray(c.loc);
-
-  glBindBuffer(GL_ARRAY_BUFFER,(GLuint)pbuf); glBindVertexArray((GLuint)pvao);
-  glUseProgram((GLuint)pprog); glViewport(pvp[0],pvp[1],pvp[2],pvp[3]);
-  glBlendEquationSeparate((GLenum)ber,(GLenum)bea);
-  glBlendFuncSeparate((GLenum)bsr,(GLenum)bdr,(GLenum)bsa,(GLenum)bda);
-  if(!e_bl) glDisable(GL_BLEND);
-  if(e_dp)  glEnable(GL_DEPTH_TEST);
-  if(e_sc)  glEnable(GL_SCISSOR_TEST);
-  if(e_cu)  glEnable(GL_CULL_FACE);
-}
+/* Docked/desktop cursor overlay is now provided by nx_pointer (nxp_draw),
+ * called from the eglSwapBuffers wrapper in imports.c. */

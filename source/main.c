@@ -455,21 +455,22 @@ static int nx_patch_libunity(uintptr_t ub) {
 int main(int argc, char *argv[]) {
   (void)argc; (void)argv;
   socketInitializeDefault();
-  debugPrintf("[boot] === zookeeper_nx start (region64mb+fbstub95 build) ===\n");
+  debugPrintf("[boot] === zookeeper_nx start (region64mb+fbstub107 build) ===\n");
 
   /* Load config.txt. The cr3 parser was inherited but never CALLED in this
    * port, so config.portrait/config.language silently stayed 0 -- wire it up.
    * When the file is missing, autogenerate a documented one with the defaults
-   * (portrait=1, language=English); when it holds retired options, rewrite it. */
+   * (portrait=1, language=0 follow-system); when it holds retired options, rewrite it. */
   {
+    extern const char *nx_resolved_language(void);   /* jni_fake.c */
     int crc = read_config(DATA_ROOT "/" CONFIG_NAME);
-    if (crc != 0) {
+    if (crc != 0)
       write_config(DATA_ROOT "/" CONFIG_NAME);
-      debugPrintf("[boot] %s config.txt (portrait=%d language=%d)\n",
-                  crc < 0 ? "created" : "rewrote", config.portrait, config.language);
-    } else {
-      debugPrintf("[boot] config: portrait=%d language=%d\n", config.portrait, config.language);
-    }
+    const char *lc = nx_resolved_language();         /* resolves LANG_AUTO -> ja/en now */
+    debugPrintf("[boot] config: portrait=%d language=%d (%s%s)%s\n",
+                config.portrait, config.language, lc,
+                config.language == LANG_AUTO ? ", from system" : "",
+                crc < 0 ? "  [config.txt created]" : crc > 0 ? "  [config.txt rewritten]" : "");
   }
 
   /* Sweep Unity's case-sensitivity probe files: CASESENSITIVETEST<guid> strays
@@ -1028,14 +1029,12 @@ int main(int argc, char *argv[]) {
     frame++;
   }
 
-  Unity_nativeApplicationUnload(fake_env, fake_unityplayer_thiz);
-  Unity_nativeDone(fake_env, fake_unityplayer_thiz);
-
-  opensles_shutdown();
-  SDL_Quit();
-  socketExit();
-
-  extern void NX_NORETURN __libnx_exit(int rc);
-  __libnx_exit(0);
+  /* Graceful exit. The engine's render/GC/worker threads are still live here, so
+   * running Unity's teardown or libnx service deinit (__libnx_exit) lets those
+   * threads touch torn-down gfx/audio state and fault -- that's "closing the game
+   * crashes the system". svcExitProcess() terminates the whole process (every
+   * thread) atomically in the kernel BEFORE anything is torn down, so nothing can
+   * race the shutdown. The system reclaims all resources and returns to HOME. */
+  svcExitProcess();
   return 0;
 }

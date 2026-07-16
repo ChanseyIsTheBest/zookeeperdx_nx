@@ -27,11 +27,42 @@ int32_t AKeyEvent_getKeyCode(const void *a) { (void)a; return 0; }
 int32_t AKeyEvent_getFlags(const void *a) { (void)a; return 0; }
 int32_t AKeyEvent_getRepeatCount(const void *a) { (void)a; return 0; }
 
-/* AConfiguration */
-void *AConfiguration_new(void) { return NULL; }
+/* AConfiguration -- Unity's native systeminfo::GetSystemLanguage (behind
+ * Application.systemLanguage) reads the device language through THIS NDK path on
+ * Android, NOT via JNI Locale.getLanguage(). It was hardcoded to "en"/"US",
+ * which pinned Application.systemLanguage to English no matter what config.txt
+ * said -> the game's Localizer always picked the English assets. Return the
+ * resolved language instead. NDK convention: write exactly the 2-char code,
+ * not NUL-terminated. */
+void *AConfiguration_new(void) {
+  /* MUST be non-NULL: libunity's systeminfo::GetSystemLanguage does
+   * `cfg = AConfiguration_new(); ...; AConfiguration_getLanguage(cfg, buf)` but
+   * skips the getLanguage read (and defaults to English) when cfg is NULL. A
+   * static buffer is enough -- the struct is opaque to us and libunity reads the
+   * language back through AConfiguration_getLanguage(), not the struct. */
+  static char cfg[256];
+  extern int debugPrintf(char *, ...);
+  debugPrintf("[lang] AConfiguration_new() -> non-NULL\n");
+  return cfg;
+}
 void  AConfiguration_fromAssetManager(void *a, void *b) { (void)a;(void)b; }
-void  AConfiguration_getLanguage(void *a, char *out) { (void)a; if (out) { out[0]='e'; out[1]='n'; } }
-void  AConfiguration_getCountry(void *a, char *out) { (void)a; if (out) { out[0]='U'; out[1]='S'; } }
+void  AConfiguration_getLanguage(void *a, char *out) {
+  (void)a;
+  if (!out) return;
+  extern const char *nx_resolved_language(void);   /* "ja" or "en" (jni_fake.c) */
+  extern int debugPrintf(char *, ...);
+  const char *lc = nx_resolved_language();
+  out[0] = lc[0]; out[1] = lc[1];
+  debugPrintf("[lang] AConfiguration_getLanguage -> %c%c (drives Application.systemLanguage)\n",
+              out[0], out[1]);
+}
+void  AConfiguration_getCountry(void *a, char *out) {
+  (void)a;
+  if (!out) return;
+  extern const char *nx_resolved_language(void);
+  int ja = nx_resolved_language()[0] == 'j';
+  out[0] = ja ? 'J' : 'U'; out[1] = ja ? 'P' : 'S';
+}
 void  AConfiguration_delete(void *a) { (void)a; }
 
 /* AAsset (Unity uses the Java AssetManager instead) */

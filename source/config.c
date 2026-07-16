@@ -15,9 +15,6 @@
 #include "util.h"
 
 #define CONFIG_VARS \
-  CONFIG_VAR_INT(screen_width); \
-  CONFIG_VAR_INT(screen_height); \
-  CONFIG_VAR_INT(language); \
   CONFIG_VAR_INT(portrait);
 
 Config config;
@@ -30,7 +27,9 @@ int screen_height = 1280;
 static inline void parse_var(const char *name, const char *value) {
   // retired options -> drop them and rewrite the file without them
   if (!strcmp(name, "touchscreen") || !strcmp(name, "controller_cursor") ||
-      !strcmp(name, "show_fps") || !strcmp(name, "widescreen")) {
+      !strcmp(name, "show_fps") || !strcmp(name, "widescreen") ||
+      !strcmp(name, "screen_width") || !strcmp(name, "screen_height") ||
+      !strcmp(name, "language")) {
     config_needs_rewrite = 1;
     return;
   }
@@ -49,9 +48,7 @@ int read_config(const char *file) {
 
   memset(&config, 0, sizeof(Config));
   config_needs_rewrite = 0;
-  config.screen_width = -1; // auto
-  config.screen_height = -1;
-  config.language = LANG_EN;
+  config.language = LANG_AUTO;  /* follow the Switch system language by default */
   config.portrait = 1;   /* rotate 90 CW by default (hold right Joy-Con up) */
 
   FILE *f = fopen(file, "r");
@@ -99,11 +96,6 @@ int write_config(const char *file) {
     "#             1 = rotate clockwise (default, right Joy-Con up)\n"
     "#             2 = rotate counter-clockwise (left Joy-Con up)\n"
     "#             0 = no rotation (stretched 16:9)\n"
-    "# language -- in-game language (applies on next launch):\n"
-    "#             2 = English (default)\n"
-    "#             1 = Japanese\n"
-    "#             0 = follow the Switch system language\n"
-    "# screen_width / screen_height -- render size; -1 = auto\n"
     "\n");
 
   #define CONFIG_VAR_INT(var) fprintf(f, "%s %d\n", #var, config.var)
