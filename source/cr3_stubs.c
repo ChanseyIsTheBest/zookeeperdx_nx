@@ -16,9 +16,10 @@
 #include "text2bitmap.h"
 #include "movie_player.h"
 #include "editbox.h"
+#include "nx_home.h"
 
 /* ---- data layer ---- */
-const char *data_dir(void) { return "sdmc:/switch/zookeeper"; }
+const char *data_dir(void) { return nx_home(); }   /* the .nro's own folder */
 
 /* cr3 threading bookkeeping: imports.c's thread_trampoline calls this when the
  * first engine thread returns. Our main loop uses jni_quit_requested instead, so

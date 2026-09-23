@@ -53,12 +53,18 @@
 #define MAIN_MVGL    "main.10007.android.mvgl"
 
 #define CONFIG_NAME "config.txt"
-#define LOG_NAME    "sdmc:/switch/zookeeper/debug.log"
+/* debug.log lives in GAME_HOME (util.c builds the path when it first opens). */
 
 // Returned for getenv("HOME")/getpwuid()->pw_dir. Unity computes a home/cache dir
 // during engine init; our env has no HOME and no passwd db, so point it at the
 // (writable) game data root instead of letting it deref a NULL passwd.
-#define GAME_HOME   "sdmc:/switch/zookeeper"
+/* The game folder: wherever the .nro was launched from (argv[0]), decided as
+ * the first statement of main() -- nx_home.c. A launcher that passes no usable
+ * path gets NX_DEFAULT_HOME (sdmc:/switch/zookeeper). A RUNTIME value: build
+ * paths with snprintf("%s/...", GAME_HOME), never by gluing string literals --
+ * gluing no longer compiles, which is the point. */
+#include "nx_home.h"
+#define GAME_HOME   (nx_home())
 
 // flip to 1 (and build) to get file logging (debug.log) for on-hardware debugging
 #define DEBUG_LOG 0

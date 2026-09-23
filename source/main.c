@@ -32,7 +32,7 @@
 #include "unity_entrypoints.h"
 #include "diag.h"
 
-#define DATA_ROOT  "sdmc:/switch/zookeeper"
+#define DATA_ROOT  GAME_HOME   /* the .nro's own folder, decided at launch */
 #define LIB_MAIN   "libmain.so"
 #define LIB_UNITY  "libunity.so"
 #define LIB_IL2CPP "libil2cpp.so"
@@ -453,9 +453,10 @@ static int nx_patch_libunity(uintptr_t ub) {
 }
 
 int main(int argc, char *argv[]) {
-  (void)argc; (void)argv;
+  nx_home_init(argc, argv);   /* the game folder: the .nro's own (argv[0]) -- before the first log line */
   socketInitializeDefault();
   debugPrintf("[boot] === zookeeper_nx start (region64mb+fbstub107 build) ===\n");
+  debugPrintf("[boot] game folder: %s (%s)\n", GAME_HOME, nx_home_source());
 
   /* Load config.txt. The cr3 parser was inherited but never CALLED in this
    * port, so config.portrait/config.language silently stayed 0 -- wire it up.
@@ -463,9 +464,10 @@ int main(int argc, char *argv[]) {
    * (portrait=1, language=0 follow-system); when it holds retired options, rewrite it. */
   {
     extern const char *nx_resolved_language(void);   /* jni_fake.c */
-    int crc = read_config(DATA_ROOT "/" CONFIG_NAME);
+    char cfgp[320]; snprintf(cfgp, sizeof cfgp, "%s/%s", DATA_ROOT, CONFIG_NAME);
+    int crc = read_config(cfgp);
     if (crc != 0)
-      write_config(DATA_ROOT "/" CONFIG_NAME);
+      write_config(cfgp);
     const char *lc = nx_resolved_language();         /* resolves LANG_AUTO -> ja/en now */
     debugPrintf("[boot] config: portrait=%d language=%d (%s%s)%s\n",
                 config.portrait, config.language, lc,
@@ -484,7 +486,7 @@ int main(int argc, char *argv[]) {
       while ((de = readdir(dd))) {
         if (strncasecmp(de->d_name, "CASESENSITIVETEST", 17) == 0 ||
             strcmp(de->d_name, ".casetest") == 0) {
-          char pth[320]; snprintf(pth, sizeof pth, DATA_ROOT "/%s", de->d_name);
+          char pth[320]; snprintf(pth, sizeof pth, "%s/%s", DATA_ROOT, de->d_name);
           if (unlink(pth) == 0) swept++;
         }
       }
@@ -524,9 +526,13 @@ int main(int argc, char *argv[]) {
    * markers makes libunity redo the extraction each boot (uses the good source).
    * Proper fix = flush writable file-backed mmaps on munmap (tracked separately). */
   {
-    int a = unlink(DATA_ROOT "/il2cpp/unity.ver");
-    int b = unlink(DATA_ROOT "/il2cpp/Metadata/global-metadata.dat");
-    int c = unlink(DATA_ROOT "/il2cpp/Resources/mscorlib.dll-resources.dat");
+    char p1[320], p2[320], p3[320];
+    snprintf(p1, sizeof p1, "%s/il2cpp/unity.ver", DATA_ROOT);
+    snprintf(p2, sizeof p2, "%s/il2cpp/Metadata/global-metadata.dat", DATA_ROOT);
+    snprintf(p3, sizeof p3, "%s/il2cpp/Resources/mscorlib.dll-resources.dat", DATA_ROOT);
+    int a = unlink(p1);
+    int b = unlink(p2);
+    int c = unlink(p3);
     debugPrintf("[boot] force re-extract: unlink unity.ver=%d metadata=%d resources=%d\n", a, b, c);
   }
 

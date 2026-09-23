@@ -13,7 +13,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET    := zookeeper_nx
 APP_TITLE := ZOOKEEPER DX
 APP_AUTHOR := ChanseyIsTheBest
-APP_VERSION := 1.0.1
+APP_VERSION := 1.0.2
 APP_ICON  := $(TOPDIR)/icon.jpg
 export APP_TITLE APP_AUTHOR APP_VERSION APP_ICON
 BUILD     := build

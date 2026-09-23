@@ -272,7 +272,7 @@ static void nxp_ensure_init(void){
   NxpConfig c = {0};
   c.screen_w = (int)g_w; c.screen_h = (int)g_h;   /* render (portrait) space   */
   c.panel_w  = 1280;     c.panel_h  = 720;         /* Switch touch panel        */
-  c.data_dir = "sdmc:/switch/zookeeper";           /* cursor.png / pointer.cfg  */
+  c.data_dir = GAME_HOME;                         /* cursor.png / pointer.cfg, next to the .nro */
   c.rotation = config.portrait;                    /* 1 CW / 2 CCW / 0 none     */
   c.handle_touch = 0;                              /* host keeps its own touch  */
   c.cursor_id = 0; c.max_touch_slots = UI_MAX_POINTERS;

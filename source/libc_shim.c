@@ -460,7 +460,7 @@ static const char *casetest_redirect(const char *path) {
   const char *b = strrchr(path, '/');
   b = b ? b + 1 : path;
   if (strncasecmp(b, "CASESENSITIVETEST", 17) == 0)
-    return GAME_HOME "/.casetest";
+    { static char ct[320]; snprintf(ct, sizeof ct, "%s/.casetest", GAME_HOME); return ct; }
   return path;
 }
 
@@ -1436,7 +1436,8 @@ struct bionic_passwd {
 void *getpwuid_fake(int uid) {
   (void)uid;
   static struct bionic_passwd pw;
-  static char nm[] = "switch", dir[] = GAME_HOME, sh[] = "/bin/sh", empty[] = "";
+  static char nm[] = "switch", dir[256], sh[] = "/bin/sh", empty[] = "";
+  snprintf(dir, sizeof dir, "%s", GAME_HOME);   /* the game folder, decided at launch */
   pw.pw_name = nm; pw.pw_passwd = empty; pw.pw_uid = 0; pw.pw_gid = 0;
   pw.pw_gecos = empty; pw.pw_dir = dir; pw.pw_shell = sh;
   return &pw;

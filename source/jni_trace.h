@@ -26,6 +26,15 @@
 #include <stdio.h>
 
 #ifdef JNI_TRACE_OFF
+#include <stdio.h>
+#include "nx_home.h"
+/* jni_trace.log, next to the .nro */
+static const char *nx_trace_log_path(void) {
+  static char p[320];
+  if (!p[0]) snprintf(p, sizeof p, "%s/jni_trace.log", nx_home());
+  return p;
+}
+
 static inline void jni_trace(const char *w, const char *c, const char *n, const char *s){
   (void)w;(void)c;(void)n;(void)s;
 }
@@ -34,7 +43,7 @@ static inline void jni_trace(const char *what, const char *cls,
                              const char *name, const char *sig){
   static FILE *log = NULL;
   static int   tried = 0;
-  if (!log && !tried){ tried = 1; log = fopen("/switch/zookeeper/jni_trace.log", "a"); }
+  if (!log && !tried){ tried = 1; log = fopen(nx_trace_log_path(), "a"); }
 
   if (name)  /* a method/field lookup */
     printf      ("[JNI] %-9s %s.%s %s\n", what, cls ? cls : "?", name, sig ? sig : "");

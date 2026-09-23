@@ -29,7 +29,7 @@ int debugPrintf(char *text, ...) {
   static FILE *f = NULL;
   va_list list;
   mutexLock(&g_log_lock);
-  if (!f) f = fopen(LOG_NAME, "a");   // open once, keep open (SD fopen/close per line is very slow)
+  if (!f) { char lp[320]; snprintf(lp, sizeof lp, "%s/debug.log", GAME_HOME); f = fopen(lp, "a"); }   // open once, keep open (SD fopen/close per line is very slow)
   if (f) {
     va_start(list, text);
     vfprintf(f, text, list);

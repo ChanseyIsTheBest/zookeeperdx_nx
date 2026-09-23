@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include "nx_home.h"
 
 #include "unity_jni.h"
 #include "util.h"
@@ -459,7 +460,7 @@ void unity_dispatch_void(void *recv, const void *id_, va_list va){ const struct 
 
 /* ========================================================================== */
 void unity_jni_init(const char *data_root){
-  snprintf(g_root,sizeof g_root,"%s",data_root && *data_root ? data_root : "/switch/zookeeper");
+  snprintf(g_root,sizeof g_root,"%s",data_root && *data_root ? data_root : nx_home());
   snprintf(g_assets,sizeof g_assets,"%s/assets",g_root);
   prefs_load();
   /* caller (jni_fake.c jni_init) should also intern every UNITY_JNI_CLASSES[]
